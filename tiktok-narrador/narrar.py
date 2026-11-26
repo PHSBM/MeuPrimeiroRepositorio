@@ -31,7 +31,11 @@ from pathlib import Path
 VOZES = {
     "antonio": "pt-BR-AntonioNeural",    # masculina, firme (padrão)
     "francisca": "pt-BR-FranciscaNeural",  # feminina, clara
-    "thalita": "pt-BR-ThalitaMultilingualNeural",  # feminina, jovem
+    "thalita": "pt-BR-ThalitaMultilingualNeural",  # feminina, jovem, mais natural
+    # vozes "multilíngues": geração mais nova e expressiva, falam português
+    "andrew": "en-US-AndrewMultilingualNeural",  # masculina, calorosa
+    "brian": "en-US-BrianMultilingualNeural",    # masculina, descontraída
+    "ava": "en-US-AvaMultilingualNeural",        # feminina, expressiva
 }
 
 LARGURA, ALTURA = 1080, 1920

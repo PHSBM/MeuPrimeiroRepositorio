@@ -47,7 +47,7 @@ O resultado sai ao lado do roteiro (`exemplos/polvo.mp4`) ou onde você indicar 
 
 | Opção | O que faz | Padrão |
 |---|---|---|
-| `--voz` | `antonio`, `francisca`, `thalita` (ou qualquer voz do `edge-tts --list-voices`) | `antonio` |
+| `--voz` | `thalita` (mais natural), `antonio`, `francisca`, ou as multilíngues `andrew`, `brian`, `ava` (ou qualquer voz do `edge-tts --list-voices`) | `antonio` |
 | `--velocidade` | velocidade da fala, ex.: `+0%`, `+20%`, `-10%` | `+10%` |
 | `--tom` | tom da voz, ex.: `+5Hz`, `-5Hz` | `+0Hz` |
 | `-m` / `--volume-musica` | música de fundo e o volume dela (0 a 1) | `0.25` |
