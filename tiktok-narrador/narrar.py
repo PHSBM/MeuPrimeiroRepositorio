@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -76,7 +77,15 @@ async def _sintetizar(texto: str, voz: str, velocidade: str, tom: str,
 def sintetizar(texto: str, voz: str, velocidade: str, tom: str,
                destino_mp3: Path) -> list[Palavra]:
     """Gera o MP3 da narração e devolve o tempo de cada palavra."""
-    return asyncio.run(_sintetizar(texto, voz, velocidade, tom, destino_mp3))
+    for tentativa in range(1, 5):  # o serviço às vezes falha; tenta de novo
+        try:
+            return asyncio.run(_sintetizar(texto, voz, velocidade, tom, destino_mp3))
+        except Exception as erro:
+            if tentativa == 4:
+                raise
+            print(f"   ...falha na voz ({type(erro).__name__}), tentando de novo")
+            time.sleep(2 * tentativa)
+    raise RuntimeError("inalcançável")
 
 
 # --------------------------------------------------------------------------- #
