@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import re
 import shutil
 import subprocess
@@ -52,7 +53,9 @@ async def _sintetizar(texto: str, voz: str, velocidade: str, tom: str,
     import edge_tts  # importado aqui para o --help funcionar sem a dependência
 
     comunicador = edge_tts.Communicate(
-        texto, voz, rate=velocidade, pitch=tom, boundary="WordBoundary"
+        texto, voz, rate=velocidade, pitch=tom, boundary="WordBoundary",
+        # respeita proxy da rede (empresas, faculdades etc.), se houver
+        proxy=os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy"),
     )
     palavras: list[Palavra] = []
     with open(destino_mp3, "wb") as f:
