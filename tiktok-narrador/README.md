@@ -66,3 +66,26 @@ O resultado sai ao lado do roteiro (`exemplos/polvo.mp4`) ou onde você indicar 
 - **Termine com uma chamada**: "Segue para mais", "Salva esse vídeo", "Comenta aí".
 - Ao postar vídeo com voz sintética, marque no TikTok a opção de **conteúdo gerado por IA**, se for pedido.
 - Use vídeos e músicas que você tem direito de usar (gravações suas, bancos gratuitos como Pexels/Pixabay, ou a biblioteca de sons do próprio TikTok).
+
+## Narrar um vídeo que já está pronto (com tempo de cada fala)
+
+Se o vídeo já tem as cenas montadas, escreva o roteiro com o **segundo em que cada fala começa**:
+
+```
+[00:00] Sete easter eggs de GTA 6 que ninguém achou!
+[00:03] Sete: no topo da torre de rádio mais alta de Vice City...
+[00:10] Seis: perdido no mar? ...
+```
+
+e rode:
+
+```bash
+python narrar.py exemplos/gta6_easter_eggs.txt -v gta6_easter_eggs_tiktok.mp4 --sem-legenda
+```
+
+Cada fala é gerada separadamente e colocada no segundo indicado. Se uma fala for maior que o
+espaço até a próxima, ela é acelerada um pouco (até 1,35x) e o programa avisa quais trechos
+convém encurtar. Use `--sem-legenda` quando o vídeo já tiver texto na tela; o `.srt` continua
+sendo gerado. Para mudar a altura das legendas, use `--altura-legenda` (0 = topo, 1920 = base).
+
+> Dica: a voz `thalita` é multilíngue e costuma pronunciar melhor termos em inglês como "easter eggs".

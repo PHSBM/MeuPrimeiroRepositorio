@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import re
 import shutil
 import subprocess
 import sys
@@ -106,7 +107,7 @@ def agrupar(palavras: list[Palavra], por_grupo: int) -> list[list[Palavra]]:
 
 
 def gerar_ass(palavras: list[Palavra], destino: Path, por_grupo: int,
-              fonte: str, tamanho: int, cor_destaque: str) -> None:
+              fonte: str, tamanho: int, cor_destaque: str, altura_y: int = 1150) -> None:
     # Cores ASS são &HBBGGRR; recebemos #RRGGBB.
     rr, gg, bb = cor_destaque[1:3], cor_destaque[3:5], cor_destaque[5:7]
     destaque = f"&H00{bb}{gg}{rr}".upper()
@@ -138,7 +139,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 else:
                     partes.append(t)
             # posição: um pouco abaixo do centro, longe da interface do TikTok
-            texto = "{\\pos(540,1150)}" + " ".join(partes)
+            texto = f"{{\\pos(540,{altura_y})}}" + " ".join(partes)
             linhas.append(
                 f"Dialogue: 0,{_tempo_ass(inicio)},{_tempo_ass(fim)},TikTok,,0,0,0,,{texto}"
             )
@@ -169,8 +170,10 @@ def duracao(arquivo: Path) -> float:
 
 def montar(narracao: Path, saida: Path, pasta_tmp: Path, video: Path | None,
            musica: Path | None, volume_musica: float, manter_audio: bool,
-           cor_fundo: str, legenda_ass: Path | None) -> None:
-    total = duracao(narracao) + 0.6  # pequena folga no final
+           cor_fundo: str, legenda_ass: Path | None,
+           total: float | None = None) -> None:
+    if total is None:
+        total = duracao(narracao) + 0.6  # pequena folga no final
 
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
 
@@ -240,6 +243,58 @@ def _tem_audio(arquivo: Path) -> bool:
     return bool(saida.stdout.strip())
 
 
+
+# --------------------------------------------------------------------------- #
+# 2b. Roteiro com marcações de tempo  ->  "[00:03] texto"
+# --------------------------------------------------------------------------- #
+MARCA = re.compile(r"^\s*\[(\d+):(\d{1,2}(?:\.\d+)?)\]\s*(.*)$")
+ACELERACAO_MAX = 1.35  # acelera a fala no máximo 35% para caber no trecho
+
+
+def ler_trechos(conteudo: str) -> list[tuple[float, str]] | None:
+    """Devolve [(inicio_s, texto), ...] se o roteiro tiver marcações de tempo."""
+    trechos: list[tuple[float, str]] = []
+    for linha in conteudo.splitlines():
+        m = MARCA.match(linha)
+        if m:
+            trechos.append((int(m[1]) * 60 + float(m[2]), m[3].strip()))
+        elif linha.strip() and trechos:
+            trechos[-1] = (trechos[-1][0], f"{trechos[-1][1]} {linha.strip()}")
+    trechos = [(t, txt) for t, txt in trechos if txt]
+    return sorted(trechos) if trechos else None
+
+
+def narrar_trechos(trechos: list[tuple[float, str]], fim_total: float, voz: str,
+                   velocidade: str, tom: str, pasta: Path, destino: Path) -> list[Palavra]:
+    """Gera cada trecho, encaixa no tempo certo e junta numa só faixa."""
+    entradas, filtros, todas = [], [], []
+    for i, (inicio, texto) in enumerate(trechos):
+        mp3 = pasta / f"trecho{i:02d}.mp3"
+        palavras = sintetizar(texto, voz, velocidade, tom, mp3)
+        dur = duracao(mp3)
+        vaga = (trechos[i + 1][0] if i + 1 < len(trechos) else fim_total) - inicio
+        fator = 1.0
+        if dur > vaga * 0.97:
+            fator = min(dur / (vaga * 0.95), ACELERACAO_MAX)
+            if dur / fator > vaga:
+                print(f"⚠️  Trecho [{inicio:.0f}s] ficou {dur / fator - vaga:.1f}s mais longo "
+                      f"que o espaço ({vaga:.1f}s). Encurte o texto.")
+        print(f"   [{inicio:5.1f}s] {dur:4.1f}s de fala em {vaga:4.1f}s"
+              + (f" (acelerado {fator:.2f}x)" if fator > 1 else ""))
+        entradas += ["-i", str(mp3)]
+        atraso = int(inicio * 1000)
+        filtros.append(f"[{i}:a]aresample=44100,atempo={fator:.4f},"
+                       f"adelay={atraso}|{atraso}[t{i}]")
+        todas += [Palavra(p.texto, inicio + p.inicio / fator, inicio + p.fim / fator)
+                  for p in palavras]
+    rotulos = "".join(f"[t{i}]" for i in range(len(trechos)))
+    filtros.append(f"{rotulos}amix=inputs={len(trechos)}:normalize=0,"
+                   f"apad,atrim=0:{fim_total:.3f}[a]")
+    subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", *entradas,
+                    "-filter_complex", ";".join(filtros), "-map", "[a]",
+                    "-ac", "1", str(destino)], check=True)
+    return todas
+
 # --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
@@ -263,6 +318,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--palavras-por-legenda", type=int, default=3)
     ap.add_argument("--fonte", default="Arial")
     ap.add_argument("--tamanho-fonte", type=int, default=96)
+    ap.add_argument("--altura-legenda", type=int, default=1150,
+                    help="posição vertical da legenda, de 0 (topo) a 1920 (padrão: 1150)")
     ap.add_argument("--cor-destaque", default="#FFE600", help="cor da palavra falada (#RRGGBB)")
     ap.add_argument("--cor-fundo", default="#111111", help="cor do fundo quando não há vídeo")
     ap.add_argument("--so-audio", action="store_true", help="gera só o MP3 + legenda .srt (sem vídeo)")
@@ -276,7 +333,11 @@ def main(argv: list[str] | None = None) -> None:
     if not shutil.which("ffmpeg") and not args.so_audio:
         sys.exit("ffmpeg não encontrado. Instale-o (veja o README) e tente de novo.")
 
-    texto = " ".join(args.roteiro.read_text(encoding="utf-8").split())
+    conteudo = args.roteiro.read_text(encoding="utf-8")
+    trechos = ler_trechos(conteudo)
+    texto = " ".join(conteudo.split())
+    if trechos and not args.video:
+        sys.exit("Roteiro com marcações de tempo precisa de um vídeo (-v).")
     if not texto:
         sys.exit("O roteiro está vazio.")
     voz = VOZES.get(args.voz.lower(), args.voz)
@@ -284,12 +345,23 @@ def main(argv: list[str] | None = None) -> None:
 
     with tempfile.TemporaryDirectory() as tmp:
         pasta = Path(tmp)
-        mp3 = pasta / "narracao.mp3"
         print(f"🎙️  Gerando narração com {voz} ({args.velocidade})...")
-        palavras = sintetizar(texto, voz, args.velocidade, args.tom, mp3)
+        total = None
+        if trechos:
+            total = duracao(args.video)
+            mp3 = pasta / "narracao.wav"
+            palavras = narrar_trechos(trechos, total, voz, args.velocidade,
+                                      args.tom, pasta, mp3)
+        else:
+            mp3 = pasta / "narracao.mp3"
+            palavras = sintetizar(texto, voz, args.velocidade, args.tom, mp3)
 
         if args.so_audio:
-            shutil.copy(mp3, saida)
+            if trechos:
+                subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(mp3),
+                                "-b:a", "192k", str(saida)], check=True)
+            else:
+                shutil.copy(mp3, saida)
             gerar_srt(palavras, saida.with_suffix(".srt"), args.palavras_por_legenda)
             print(f"✅ Pronto: {saida} e {saida.with_suffix('.srt')}")
             return
@@ -298,11 +370,11 @@ def main(argv: list[str] | None = None) -> None:
         if not args.sem_legenda:
             ass = pasta / "legenda.ass"
             gerar_ass(palavras, ass, args.palavras_por_legenda, args.fonte,
-                      args.tamanho_fonte, args.cor_destaque)
+                      args.tamanho_fonte, args.cor_destaque, args.altura_legenda)
 
         print("🎬 Montando o vídeo...")
         montar(mp3, saida, pasta, args.video, args.musica, args.volume_musica,
-               args.manter_audio, args.cor_fundo, ass)
+               args.manter_audio, args.cor_fundo, ass, total)
         gerar_srt(palavras, saida.with_suffix(".srt"), args.palavras_por_legenda)
 
     print(f"✅ Pronto: {saida}  ({duracao(saida):.1f}s)")
